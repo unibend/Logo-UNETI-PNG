@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         UNETI Logo Replacer
 // @namespace    https://github.com/unibend
-// @version      1.0
+// @version      1.1
 // @description  Trades the main UNETI logo for a custom image.
 // @author       Ben
 // @match        *://uneti.edu.ve/*
 // @match        *://*.uneti.edu.ve/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {

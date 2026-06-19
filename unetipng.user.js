@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         UNETI Logo Replacer
 // @namespace    https://github.com/unibend
-// @version      1.1
-// @description  Trades the main UNETI logo for a custom image.
+// @version      1.2
+// @description  Replaces the main UNETI logo with a custom image.
 // @author       Ben
 // @match        *://uneti.edu.ve/*
 // @match        *://*.uneti.edu.ve/*
@@ -10,62 +10,78 @@
 // @run-at       document-start
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
-    const targetImageUrl = 'https://www.uneti.edu.ve/campus/pluginfile.php/1/theme_edash/main_logo/1777513178/logouneti22.jpg';
-    const newImageUrl = 'https://images2.imgbox.com/56/f7/nFfdG1zp_o.png';
+    const TARGET_URL  = 'https://www.uneti.edu.ve/campus/pluginfile.php/1/theme_edash/main_logo/1777513178/logouneti22.jpg';
+    const REPLACE_URL = 'https://images2.imgbox.com/56/f7/nFfdG1zp_o.png';
 
-    // Function to find and replace the target image
-    function replaceLogo() {
-        const images = document.getElementsByTagName('img');
-        for (let i = 0; i < images.length; i++) {
-            const img = images[i];
-            // Check both the resolved src and the raw attribute src
-            if (img.src === targetImageUrl || img.getAttribute('src') === targetImageUrl) {
-                img.src = newImageUrl;
-            }
+    // Normalise a URL string so both relative and absolute src values
+    // can be compared against the fully-qualified TARGET_URL.
+    function resolveUrl(raw) {
+        try { return new URL(raw, location.href).href; }
+        catch { return raw; }
+    }
+
+    function isTarget(img) {
+        const raw = img.getAttribute('src') || '';
+        return img.src === TARGET_URL || resolveUrl(raw) === TARGET_URL;
+    }
+
+    function replaceIfMatch(img) {
+        if (isTarget(img)) {
+            img.src = REPLACE_URL;
         }
     }
 
-    // Run initially when the script loads
-    replaceLogo();
-
-    // Use a MutationObserver to catch dynamically loaded images (e.g., via AJAX or lazy loading)
-    const observer = new MutationObserver((mutations) => {
-        let shouldCheck = false;
-        for (const mutation of mutations) {
-            if (mutation.addedNodes.length) {
-                shouldCheck = true;
-                break;
-            }
-            if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
-                shouldCheck = true;
-                break;
-            }
+    // Recursively scan a DOM node for matching <img> elements.
+    function scanNode(node) {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        
+        if (node.tagName === 'IMG') {
+            replaceIfMatch(node);
+            return; // <img> cannot contain other <img> tags, so we can stop here
         }
-        if (shouldCheck) {
-            replaceLogo();
+        
+        // querySelectorAll is faster than getElementsByTagName on large subtrees.
+        node.querySelectorAll('img').forEach(replaceIfMatch);
+    }
+
+    // --- MutationObserver ---
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            // New nodes added to the DOM.
+            mutation.addedNodes.forEach(scanNode);
+            
+            // Existing <img> src attribute changed.
+            if (
+                mutation.type === 'attributes' &&
+                mutation.attributeName === 'src' &&
+                mutation.target.tagName === 'IMG'
+            ) {
+                replaceIfMatch(mutation.target);
+            }
         }
     });
 
-    // Start observing the document body for DOM changes
-    if (document.body) {
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['src']
-        });
-    } else {
-        document.addEventListener('DOMContentLoaded', () => {
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeFilter: ['src']
-            });
-        });
+    const OBSERVER_CONFIG = {
+        childList:      true,
+        subtree:        true,
+        attributes:     true,
+        attributeFilter: ['src'],
+    };
+
+    // At document-start, document.documentElement might be null, 
+    // but the `document` object ALWAYS exists.
+    // By observing `document`, we instantly catch the exact microsecond 
+    // the <html> tag is created by the parser, ensuring zero delay.
+    function start() {
+        scanNode(document); // Catch anything already there (unlikely but safe)
+        observer.observe(document, OBSERVER_CONFIG);
     }
 
+    // Re-run a full scan once the DOM is fully parsed as a final safety net.
+    document.addEventListener('DOMContentLoaded', () => scanNode(document.documentElement), { once: true });
+
+    start();
 })();
